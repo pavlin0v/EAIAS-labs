@@ -1,106 +1,156 @@
+import math
 import csv
 from typing import List
 
 def import_data():
     data = []
 
-    with open('data/lr3.csv', 'r') as f:
+    with open('data/lr4.csv', 'r') as f:
         reader = csv.reader(f)
         for row in reader:
-            data.append([int(x) if x.strip() else 0 for x in row])
+            data.append([int(x) for x in row])
 
     return data
 
-def print_array(name: str, values: List[int]):
-    print(f"{name:>10}", end="")
-    for value in values:
-        print(f"{value:>4}", end="")
+def cos_similarity(a: List[int], b: List[int]):
+    if len(a) != len(b): return 0
+
+    ab_sum = 0
+    a_sum = 0
+    b_sum = 0
+
+    for i in range(len(a)):
+        if a[i] == 0 or b[i] == 0: continue
+
+        ab_sum += a[i]*b[i]
+        a_sum += a[i]**2
+        b_sum += b[i]**2
+
+    denominator = math.sqrt(a_sum) * math.sqrt(b_sum)
+    if denominator == 0: return 0
+
+    return ab_sum / denominator
+
+def mean_rating(ratings: List[int]):
+    rated = [x for x in ratings if x != 0]
+    if len(rated) == 0: return 0
+
+    return sum(rated) / len(rated)
+
+def similarity_matrix(users: List[List[int]]):
+    matrix = []
+
+    for i in range(len(users)):
+        matrix.append([])
+        for j in range(len(users)):
+            matrix[i].append(0 if i == j else cos_similarity(users[i], users[j]))
+
+    return matrix
+
+def print_matrix(matrix: List[List[float]], names: List[str]):
+    width = max(8, max(len(name) for name in names) + 2)
+
+    print(" " * width, end="")
+    for name in names:
+        print(f"{name:>{width}}", end="")
     print()
 
-def print_matrix(data: List[List[int]]):
-    print("Матрица A:")
-    for row in data:
-        for value in row:
-            if value == 0:
-                print(" " * 4, end="")
+    for i, row in enumerate(matrix):
+        print(f"{names[i]:>{width}}", end="")
+        for j, value in enumerate(row):
+            if j < i:
+                print(" " * width, end="")
             else:
-                print(f"{value:>4}", end="")
+                print(f"{value:>{width}.2f}", end="")
         print()
-    print()
 
-def print_coordinate(data: List[List[int]]):
-    values = []
-    rows = []
-    cols = []
+def find_most_similar(sim: List[List[float]], a: int):
+    num = -1
+    max_sim = -1
 
-    for i in range(len(data)):
-        for j in range(len(data[i])):
-            if data[i][j] == 0: continue
+    for u in range(len(sim)):
+        if u == a: continue
 
-            values.append(data[i][j])
-            rows.append(i)
-            cols.append(j)
+        if sim[a][u] > max_sim:
+            max_sim = sim[a][u]
+            num = u
 
-    print("Координатный:")
-    print_array("Value", values)
-    print_array("Row", rows)
-    print_array("Col", cols)
-    print()
+    return num
 
-def print_csr(data: List[List[int]]):
-    values = []
-    cols = []
-    row_index = [0]
+def predict_rating(users: List[List[int]], sim: List[List[float]], a: int, neighbours: List[int], item: int):
+    numerator = 0
+    denominator = 0
 
-    for i in range(len(data)):
-        for j in range(len(data[i])):
-            if data[i][j] == 0: continue
+    for u in neighbours:
+        if users[u][item] == 0: continue
 
-            values.append(data[i][j])
-            cols.append(j)
-        row_index.append(len(values))
+        numerator += (users[u][item] - mean_rating(users[u])) * sim[a][u]
+        denominator += abs(sim[a][u])
 
-    print("По строкам:")
-    print_array("Value", values)
-    print_array("Col", cols)
-    print_array("RowIndex", row_index)
-    print()
+    if denominator == 0: return 0
 
-def print_ellpack(data: List[List[int]]):
-    values = []
-    cols = []
+    return mean_rating(users[a]) + numerator / denominator
 
-    for i in range(len(data)):
-        values.append([])
-        cols.append([])
-        for j in range(len(data[i])):
-            if data[i][j] == 0: continue
+def recommend(users: List[List[int]], sim: List[List[float]], names: List[str], a: int):
+    neighbours = [find_most_similar(sim, a)]
+    best_item = -1
+    best_rating = 0
 
-            values[i].append(data[i][j])
-            cols[i].append(j)
+    for item in range(len(users[a])):
+        if users[a][item] != 0: continue
 
-    width = max(len(row) for row in values)
-    for i in range(len(data)):
-        values[i] += [0] * (width - len(values[i]))
-        cols[i] += [0] * (width - len(cols[i]))
+        rating = predict_rating(users, sim, a, neighbours, item)
+        if rating > best_rating:
+            best_rating = rating
+            best_item = item
 
-    print("ELLPACK:")
-    print(f"{'Value':>{4 * width}}    {'Column':>{4 * width}}")
-    for i in range(len(data)):
-        for value in values[i]:
-            print(f"{value:>4}", end="")
-        print(" " * 4, end="")
-        for col in cols[i]:
-            print(f"{col:>4}", end="")
-        print()
+    if best_item == -1:
+        print(f"{names[a]} рекомендовать нечего")
+        return
+
+    print(f"{names[a]} рекомендовать P{best_item + 1} (прогноз {best_rating:.2f}, похожий {names[neighbours[0]]})")
+
+def find_best_product(products: List[List[int]]):
+    best_item = 0
+
+    for item in range(len(products)):
+        if mean_rating(products[item]) > mean_rating(products[best_item]):
+            best_item = item
+
+    return best_item
 
 def main():
-    data = import_data()
+    products = import_data()
+    all_users = list(map(list, zip(*products)))
+    all_names = [f"U{i+1}" for i in range(len(all_users))]
 
-    print_matrix(data)
-    print_coordinate(data)
-    print_csr(data)
-    print_ellpack(data)
+    excluded = int(input("Номер пользователя для исключения: ")) - 1
+
+    users = []
+    names = []
+    for i in range(len(all_users)):
+        if i == excluded: continue
+
+        users.append(all_users[i])
+        names.append(all_names[i])
+
+    sim = similarity_matrix(users)
+
+    print()
+    print(f"Подобие пользователей (исключён U{excluded + 1}):")
+    print_matrix(sim, names)
+    print()
+
+    best_item = find_best_product(products)
+
+    for a in range(len(users)):
+        if mean_rating(users[a]) == 0:
+            print(f"{names[a]} новый, рекомендовать P{best_item + 1}")
+        else:
+            recommend(users, sim, names, a)
+
+    print()
+    print(f"Новому пользователю рекомендовать P{best_item + 1} (средний рейтинг {mean_rating(products[best_item]):.2f})")
 
 if __name__ == "__main__":
     main()
