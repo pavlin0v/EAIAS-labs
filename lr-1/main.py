@@ -5,7 +5,7 @@ from typing import List
 def import_data():
     data = []
 
-    with open('data.csv', 'r') as f:
+    with open('data/lr1.csv', 'r') as f:
         reader = csv.reader(f)
         for row in reader:
             data.append([int(x) for x in row])
@@ -51,7 +51,7 @@ def main():
     products = import_data()
     users = list(map(list, zip(*products)))
 
-    find_max_similarity(products, "продуком")
+    find_max_similarity(products, "продуктом")
     find_max_similarity(users, "пользователем")
 
 if __name__ == "__main__":
